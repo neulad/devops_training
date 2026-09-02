@@ -20,8 +20,6 @@ services:
     environment:
       PORT: 8000
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-devops_dashboard}
-    ports:
-      - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -31,6 +29,9 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
       - backend
 
