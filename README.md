@@ -1,25 +1,42 @@
-# Opsboard
+# Filebox
 
-A mildly complex production operations dashboard for practicing a real VPS deployment path.
+A small private file-sharing SPA for practicing a production Docker deployment.
 
 ## Architecture
 
-- `frontend/`: React + Vite static bundle. Build it with `npm run build`; deploy `frontend/dist/` as static files.
-- `backend/`: Node.js + Express JSON API. It never serves frontend files.
-- `backend/migrations/`: SQL migrations and seed data.
-- PostgreSQL is external. The app only needs a connection string supplied through `DATABASE_URL`.
+- `frontend/`: React + Vite SPA served by nginx.
+- `backend/`: Express API with bcrypt password hashing and HTTP-only cookie sessions.
+- `backend/migrations/`: numbered PostgreSQL migrations for users and file metadata.
+- PostgreSQL stores accounts and metadata; uploaded file bytes live in the persistent `uploads` Docker volume.
+
+Files are limited to 20 MB by both nginx and the backend.
 
 ## Local development
 
-1. Create a database and copy `backend/.env.example` to `backend/.env`.
-2. Set `DATABASE_URL` to your PostgreSQL connection string.
+1. Create a PostgreSQL database and copy `backend/.env.example` to `backend/.env`.
+2. Set `DATABASE_URL` and a long random `JWT_SECRET`.
 3. Run migrations: `cd backend && npm install && npm run migrate`.
 4. Start the API: `npm run dev`.
-5. In a second terminal, run `cd frontend && npm install && npm run dev`.
-6. Open the Vite URL shown in the terminal. Vite proxies `/api` to `http://localhost:8000`.
+5. In another terminal, run `cd frontend && npm install && npm run dev`.
+6. Open the Vite URL shown in the terminal.
 
-## VPS deployment shape
+The Vite development server proxies `/api` to `http://localhost:8000`.
 
-Build the frontend on the deployment host or CI and let nginx serve `frontend/dist/` as its document root. Run the backend as a long-lived Node process on a private localhost port, with `DATABASE_URL` and `PORT` in its environment. Configure nginx to serve the frontend and proxy only `/api/` to the backend. Run `npm run migrate` during releases before restarting the API.
+## Docker deployment
 
-The UI exercises both read and write paths: it loads service health, incidents, deployments, and database health, and the Resolve action updates an incident through `PATCH /api/incidents/:id`.
+Create a root `.env` with `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, and `JWT_SECRET`, then run:
+
+```sh
+docker compose up --build
+```
+
+The database healthcheck completes before the backend starts. The backend applies all pending migrations before starting the API. Nginx serves the SPA and proxies `/api/` to the backend.
+
+## Tests
+
+Backend tests cover nickname validation, bcrypt hashing and verification, and signed session claims:
+
+```sh
+cd backend
+npm test
+```

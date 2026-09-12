@@ -8,14 +8,27 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   backend:
     build: ./backend
     restart: unless-stopped
     env_file:
       - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      PORT: 8000
+      UPLOAD_DIR: /data/uploads
+      JWT_SECRET: ${JWT_SECRET}
+    volumes:
+      - uploads:/data/uploads
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   frontend:
     build: ./frontend
@@ -31,3 +44,4 @@ services:
 
 volumes:
   pgdata:
+  uploads:

@@ -1,58 +1,117 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, AlertTriangle, ArrowUpRight, CheckCircle2, Clock3, RefreshCw, Server, ShieldCheck, Zap } from 'lucide-react';
+import { CloudUpload, Download, File, FileText, LogOut, ShieldCheck, Trash2, UploadCloud } from 'lucide-react';
 import './styles.css';
 
-const api = (path, options) => fetch(path, { headers: { 'Content-Type': 'application/json' }, ...options }).then(async (res) => {
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+const maxSize = 20 * 1024 * 1024;
+
+async function api(path, options = {}) {
+  const response = await fetch(path, { credentials: 'include', ...options });
+  const data = response.status === 204 ? null : await response.json();
+  if (!response.ok) throw new Error(data?.error || 'Something went wrong');
   return data;
-});
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
 
 function App() {
-  const [data, setData] = useState({ services: [], incidents: [], deployments: [] });
-  const [health, setHealth] = useState({ status: 'checking', database: 'checking' });
+  const [user, setUser] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [authMode, setAuthMode] = useState('login');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  async function loadDashboard() {
-    setLoading(true); setError('');
+  async function loadSession() {
     try {
-      const [dashboard, status] = await Promise.all([api('/api/dashboard'), api('/api/health')]);
-      setData(dashboard); setHealth(status);
+      const session = await api('/api/auth/me');
+      setUser(session.user);
+    } catch {
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadFiles() {
+    const data = await api('/api/files');
+    setFiles(data.files);
+  }
+
+  useEffect(() => { loadSession(); }, []);
+  useEffect(() => { if (user) loadFiles().catch((requestError) => setError(requestError.message)); }, [user]);
+
+  async function submitAuth(event) {
+    event.preventDefault();
+    setError('');
+    const form = new FormData(event.currentTarget);
+    try {
+      const data = await api(`/api/auth/${authMode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nickname: form.get('nickname'), password: form.get('password') }),
+      });
+      setUser(data.user);
+      event.currentTarget.reset();
     } catch (requestError) { setError(requestError.message); }
-    finally { setLoading(false); }
   }
 
-  useEffect(() => { loadDashboard(); }, []);
-
-  async function resolveIncident(id) {
-    await api(`/api/incidents/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'resolved' }) });
-    await loadDashboard();
+  async function logout() {
+    await api('/api/auth/logout', { method: 'POST' });
+    setUser(null);
+    setFiles([]);
   }
 
-  const healthy = data.services.filter((service) => service.status === 'healthy').length;
-  const avgLatency = data.services.length ? Math.round(data.services.reduce((sum, service) => sum + Number(service.latency_ms), 0) / data.services.length) : 0;
+  async function deleteFile(id) {
+    setError('');
+    try {
+      await api(`/api/files/${id}`, { method: 'DELETE' });
+      setFiles((current) => current.filter((file) => file.id !== id));
+    } catch (requestError) { setError(requestError.message); }
+  }
 
-  return <div className="app-shell">
-    <aside className="sidebar">
-      <div className="brand"><span className="brand-mark"><Activity size={19} /></span><span>opsboard</span></div>
-      <div className="workspace-label">Workspace</div><div className="workspace">production <span>⌄</span></div>
-      <nav><a className="active"><Activity size={17} /> Overview</a><a><Server size={17} /> Services <b>{data.services.length}</b></a><a><AlertTriangle size={17} /> Incidents <b>{data.incidents.length}</b></a><a><ArrowUpRight size={17} /> Deployments</a></nav>
-      <div className="sidebar-bottom"><div className="operator"><span className="avatar">NL</span><div><strong>neulad</strong><small>operator</small></div><span>···</span></div></div>
-    </aside>
-    <main className="main">
-      <header className="topbar"><div><div className="eyebrow">Operations / Today</div><h1>Good morning, operator.</h1><p>Here is the pulse of your production stack.</p></div><button className="refresh" onClick={loadDashboard} disabled={loading}><RefreshCw size={16} className={loading ? 'spin' : ''} /> Refresh</button></header>
-      {error && <div className="error"><AlertTriangle size={17} /> {error} <span>Check that the API and PostgreSQL are running.</span></div>}
-      <section className="metrics"><Metric icon={<ShieldCheck />} label="Systems healthy" value={`${healthy}/${data.services.length || '—'}`} accent="green" /><Metric icon={<Clock3 />} label="Avg. latency" value={`${avgLatency || '—'} ms`} accent="amber" /><Metric icon={<AlertTriangle />} label="Open incidents" value={data.incidents.length} accent="red" /><Metric icon={<Zap />} label="Deploys today" value={data.deployments.length} accent="blue" /></section>
-      <div className="content-grid"><section className="panel services-panel"><div className="panel-head"><div><h2>Service health</h2><p>Live signals from your critical services</p></div><span className="live"><i /> Live</span></div><div className="service-list">{data.services.map((service) => <div className="service-row" key={service.id}><span className={`status-dot ${service.status}`} /><div className="service-name"><strong>{service.name}</strong><small>{service.owner}</small></div><div className="service-stat"><small>Uptime</small><strong>{service.uptime}%</strong></div><div className="service-stat latency"><small>Latency</small><strong>{service.latency_ms}ms</strong></div><span className={`pill ${service.status}`}>{service.status}</span></div>)}</div></section>
-        <section className="panel incidents-panel"><div className="panel-head"><div><h2>Active incidents</h2><p>Coordinate response and recovery</p></div><span className="count">{data.incidents.length}</span></div>{data.incidents.length === 0 ? <div className="empty"><CheckCircle2 size={28} /><strong>All clear</strong><span>No active incidents.</span></div> : <div className="incident-list">{data.incidents.map((incident) => <article className="incident" key={incident.id}><div className="incident-top"><span className={`severity ${incident.severity}`}>{incident.severity}</span><span>{new Date(incident.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div><h3>{incident.title}</h3><p>{incident.summary}</p><div className="incident-foot"><span>{incident.service} · {incident.status}</span><button onClick={() => resolveIncident(incident.id)}>Resolve <CheckCircle2 size={14} /></button></div></article>)}</div>}</section>
-      </div>
-      <section className="panel deploy-panel"><div className="panel-head"><div><h2>Recent deployments</h2><p>Release activity across environments</p></div><a className="view-all">View all <ArrowUpRight size={15} /></a></div><div className="table-wrap"><table><thead><tr><th>Service</th><th>Version</th><th>Environment</th><th>Released by</th><th>Status</th></tr></thead><tbody>{data.deployments.map((deployment) => <tr key={deployment.id}><td><strong>{deployment.service}</strong></td><td className="mono">{deployment.version}</td><td><span className={`env ${deployment.environment}`}>{deployment.environment}</span></td><td>{deployment.deployed_by}</td><td><span className={`deploy-status ${deployment.status}`}><i /> {deployment.status}</span></td></tr>)}</tbody></table></div></section>
-      <footer><span>API status: <b className={health.status === 'ok' ? 'ok' : ''}>{health.status}</b></span><span>Database: <b className={health.database === 'connected' ? 'ok' : ''}>{health.database}</b></span><span>Last checked just now</span></footer>
-    </main>
-  </div>
+  if (loading) return <div className="loading-screen"><UploadCloud size={30} /><span>Opening your filebox...</span></div>;
+  if (!user) return <AuthScreen mode={authMode} setMode={setAuthMode} onSubmit={submitAuth} error={error} />;
+  return <Workspace user={user} files={files} onLogout={logout} onDelete={deleteFile} setFiles={setFiles} error={error} setError={setError} />;
 }
-function Metric({ icon, label, value, accent }) { return <div className="metric"><span className={`metric-icon ${accent}`}>{icon}</span><div><small>{label}</small><strong>{value}</strong></div></div> }
+
+function AuthScreen({ mode, setMode, onSubmit, error }) {
+  const register = mode === 'register';
+   return <main className="auth-layout"><section className="intro"><div className="logo"><span><CloudUpload size={19} /></span> filebox</div><div className="intro-copy"><p className="kicker">Private file sharing</p><h1>Your files,<br /><em>quietly kept.</em></h1><p className="intro-text">A small, dependable place for the files you need close at hand.</p></div><div className="trust"><ShieldCheck size={17} /> Your files belong only to you</div></section><section className="auth-panel"><div className="auth-card"><p className="kicker">{register ? 'Create your space' : 'Welcome back'}</p><h2>{register ? 'Start with a nickname.' : 'Sign in to filebox.'}</h2><p className="muted">{register ? 'No email required. Just you and your files.' : 'Your personal files are waiting.'}</p>{error && <div className="form-error">{error}</div>}<form onSubmit={onSubmit}><label>Nickname<input name="nickname" required minLength="3" maxLength="32" pattern="[a-zA-Z0-9_-]+" autoComplete="username" placeholder="mira_7" /></label><label>Password<input name="password" type="password" required minLength="8" maxLength="72" autoComplete={register ? 'new-password' : 'current-password'} placeholder="At least 8 characters" /></label><button className="primary-button" type="submit">{register ? 'Create account' : 'Sign in'} <span>-&gt;</span></button></form><p className="switch">{register ? 'Already have an account?' : 'New to filebox?'} <button onClick={() => setMode(register ? 'login' : 'register')}>{register ? 'Sign in' : 'Create one'}</button></p></div></section></main>;
+}
+
+function Workspace({ user, files, onLogout, onDelete, setFiles, error, setError }) {
+  const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  function uploadFile(file) {
+    if (!file) return;
+    if (file.size > maxSize) { setError('Files must be smaller than 20 MB'); return; }
+    setError('');
+    setUploading(true);
+    setProgress(0);
+    const request = new XMLHttpRequest();
+    request.open('POST', '/api/files');
+    request.withCredentials = true;
+    request.upload.onprogress = (event) => { if (event.lengthComputable) setProgress(Math.round((event.loaded / event.total) * 100)); };
+    request.onload = async () => {
+      setUploading(false);
+      if (request.status >= 200 && request.status < 300) {
+        setFiles((current) => [JSON.parse(request.responseText).file, ...current]);
+      } else {
+        try { setError(JSON.parse(request.responseText).error); } catch { setError('Upload failed'); }
+      }
+    };
+    request.onerror = () => { setUploading(false); setError('Upload failed'); };
+    const body = new FormData();
+    body.append('file', file);
+    request.send(body);
+  }
+
+  return <main className="workspace-layout"><header className="workspace-header"><div className="logo dark"><span><CloudUpload size={19} /></span> filebox</div><div className="account"><span className="avatar">{user.nickname.slice(0, 1).toUpperCase()}</span><strong>{user.nickname}</strong><button onClick={onLogout} title="Sign out"><LogOut size={17} /></button></div></header><section className="workspace-content"><div className="heading-row"><div><p className="kicker">Your private space</p><h1>Good to have you, {user.nickname}.</h1><p className="muted">Keep the important things in one calm, simple place.</p></div><span className="file-count">{files.length} {files.length === 1 ? 'file' : 'files'}</span></div><div className={`dropzone ${uploading ? 'uploading' : ''}`} onClick={() => !uploading && inputRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); uploadFile(event.dataTransfer.files[0]); }}><input ref={inputRef} type="file" hidden onChange={(event) => uploadFile(event.target.files[0])} /><div className="upload-icon"><CloudUpload size={27} /></div>{uploading ? <><strong>Uploading... {progress}%</strong><div className="progress"><i style={{ width: `${progress}%` }} /></div></> : <><strong>Drop a file here, or browse</strong><span>Up to 20 MB per file</span></>}</div>{error && <div className="form-error page-error">{error}</div>}<section className="files-section"><div className="section-heading"><h2>Your files</h2><span>Stored securely</span></div>{files.length === 0 ? <div className="empty-files"><FileText size={28} /><strong>No files yet</strong><span>Upload your first file to get started.</span></div> : <div className="file-list">{files.map((file) => <article className="file-row" key={file.id}><div className="file-type"><File size={19} /></div><div className="file-details"><strong>{file.original_name}</strong><span>{formatBytes(Number(file.size_bytes))} · {new Date(file.created_at).toLocaleDateString()}</span></div><a className="icon-button" href={`/api/files/${file.id}/download`} title="Download"><Download size={17} /></a><button className="icon-button danger" onClick={() => onDelete(file.id)} title="Delete"><Trash2 size={17} /></button></article>)}</div>}</section></section></main>;
+}
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><App /></React.StrictMode>);

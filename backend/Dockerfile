@@ -9,4 +9,4 @@ COPY . .
 
 USER node
 
-CMD ["node", "src/server.js"]
+CMD ["sh", "-c", "npm run migrate && npm start"]
