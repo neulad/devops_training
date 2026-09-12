@@ -13,8 +13,8 @@ Files are limited to 20 MB by both nginx and the backend.
 
 ## Local development
 
-1. Create a PostgreSQL database and copy `backend/.env.example` to `backend/.env`.
-2. Set `DATABASE_URL` and a long random `JWT_SECRET`.
+1. Copy `.env.example` to `.env` and set a long random `JWT_SECRET`.
+2. Export the variables before running Node locally: `set -a; source .env; set +a`.
 3. Run migrations: `cd backend && npm install && npm run migrate`.
 4. Start the API: `npm run dev`.
 5. In another terminal, run `cd frontend && npm install && npm run dev`.
