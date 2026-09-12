@@ -7,6 +7,4 @@ RUN npm ci --omit=dev
 
 COPY . .
 
-USER node
-
 CMD ["sh", "-c", "npm run migrate && npm start"]
