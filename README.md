@@ -34,8 +34,6 @@ The recorded deployment explanation is available here:
 
 [![Watch the deployment explanation](https://img.youtube.com/vi/gKYbQm7ih0M/hqdefault.jpg)](https://youtu.be/gKYbQm7ih0M)
 
-GitHub does not play YouTube videos directly inside a README, but this thumbnail is clickable and opens the video on YouTube.
-
 ## Deployment architecture
 
 The request path is:
