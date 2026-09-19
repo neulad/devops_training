@@ -18,6 +18,7 @@ Files are limited to 20 MB by both nginx and the backend.
 4. Start the API: `npm run dev`.
 5. In another terminal, run `cd frontend && npm install && npm run dev`.
 6. Open the Vite URL shown in the terminal.
+7. Test if everything works
 
 The Vite development server proxies `/api` to `http://localhost:8000`.
 
