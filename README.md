@@ -17,31 +17,16 @@ Replace the placeholders below with screenshots pasted directly into this sectio
 
 ### GitHub Actions deployment
 
-<!-- Paste the image Markdown here, for example: -->
-<!-- ![Successful GitHub Actions deployment](github-actions-deployment.png) -->
+<img width="1126" height="568" alt="image" src="https://github.com/user-attachments/assets/5eb55590-7011-412e-85ef-49dbd61f4234" />
+<img width="1083" height="534" alt="image" src="https://github.com/user-attachments/assets/04e6a153-0299-46da-bce5-b7498b16833e" />
 
-_Paste the GitHub Actions screenshot here._
 
 ### Docker Compose services
+<img width="334" height="80" alt="image" src="https://github.com/user-attachments/assets/289f5407-2e59-4e10-913f-40c8b9148075" />
 
-<!-- Paste the image Markdown here, for example: -->
-<!-- ![Running Docker Compose services](docker-compose-ps.png) -->
+### Firewall
+<img width="385" height="184" alt="image" src="https://github.com/user-attachments/assets/1be99c44-0508-4630-b5d2-bfc380e44102" />
 
-_Paste the Docker Compose screenshot here._
-
-### HTTPS certificate
-
-<!-- Paste the image Markdown here, for example: -->
-<!-- ![HTTPS certificate](https-certificate.png) -->
-
-_Paste the HTTPS certificate screenshot here._
-
-### Firewall and Fail2ban
-
-<!-- Paste the image Markdown here, for example: -->
-<!-- ![UFW and Fail2ban status](ufw-fail2ban-status.png) -->
-
-_Paste the UFW and Fail2ban screenshot here._
 
 ## Video explanation
 
@@ -122,6 +107,9 @@ ssh-copy-id -i ~/.ssh/github_actions_deploy.pub deploy@<server-ip>
 ```
 
 The private key stays outside the repository. GitHub Actions receives it as an encrypted repository secret. The public key is added to `/home/deploy/.ssh/authorized_keys` on the server.
+
+<img width="955" height="529" alt="image" src="https://github.com/user-attachments/assets/d284db19-3545-4f96-850d-f94e32f0338d" />
+
 
 In `/etc/ssh/sshd_config`, use settings equivalent to:
 
@@ -249,19 +237,6 @@ sudo ufw status verbose
 ```
 
 Do not expose PostgreSQL (`5432`) or the backend port (`8000`) in UFW or Compose. Confirm that a second SSH session works before enabling a restrictive firewall policy.
-
-## Fail2ban
-
-Fail2ban watches authentication logs and temporarily bans IP addresses that repeatedly fail. Enable the service and configure the SSH jail:
-
-```sh
-sudo apt install fail2ban
-sudo systemctl enable --now fail2ban
-sudo fail2ban-client status
-sudo fail2ban-client status sshd
-```
-
-The SSH jail should protect the actual SSH port and use the system's authentication log. Keep the ban settings reasonable so a real administrator is not locked out accidentally. UFW blocks unsolicited traffic; Fail2ban adds temporary bans based on repeated suspicious behavior. They solve different parts of the server-hardening problem.
 
 ## Verification checklist
 
