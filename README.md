@@ -3,7 +3,6 @@
 A small private file-sharing SPA for practicing a production Docker deployment.
 
 ## Architecture
-
 - `frontend/`: React + Vite SPA served by nginx.
 - `backend/`: Express API with bcrypt password hashing and HTTP-only cookie sessions.
 - `backend/migrations/`: numbered PostgreSQL migrations for users and file metadata.
