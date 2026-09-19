@@ -13,8 +13,6 @@ This project is deployed to a Linux server with Docker Compose. The public hostn
 
 ## Screenshots
 
-Replace the placeholders below with screenshots pasted directly into this section. In GitHub's editor, you can drag an image into the README and GitHub will create the Markdown for you.
-
 ### GitHub Actions deployment
 
 <img width="1126" height="568" alt="image" src="https://github.com/user-attachments/assets/5eb55590-7011-412e-85ef-49dbd61f4234" />
