@@ -1,42 +1,275 @@
-# Filebox
+# Production Server and Deployment
 
-A small private file-sharing SPA for practicing a production Docker deployment.
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-Deployment-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
+[![DuckDNS](https://img.shields.io/badge/DuckDNS-DNS-orange)](https://www.duckdns.org/)
+[![nginx](https://img.shields.io/badge/nginx-Reverse%20Proxy-009639?logo=nginx&logoColor=white)](https://nginx.org/)
+[![Let's Encrypt](https://img.shields.io/badge/Let's%20Encrypt-TLS-003A70?logo=letsencrypt&logoColor=white)](https://letsencrypt.org/)
+[![Certbot](https://img.shields.io/badge/Certbot-ACME-2E8555)](https://certbot.eff.org/)
+[![UFW](https://img.shields.io/badge/UFW-Firewall-333333)](https://help.ubuntu.com/community/UFW)
+[![Fail2ban](https://img.shields.io/badge/Fail2ban-Brute--Force%20Protection-8A2BE2)](https://www.fail2ban.org/)
 
-## Architecture
-- `frontend/`: React + Vite SPA served by nginx.
-- `backend/`: Express API with bcrypt password hashing and HTTP-only cookie sessions.
-- `backend/migrations/`: numbered PostgreSQL migrations for users and file metadata.
-- PostgreSQL stores accounts and metadata; uploaded file bytes live in the persistent `uploads` Docker volume.
+This project is deployed to a Linux server with Docker Compose. The public hostname points to the server through DuckDNS, nginx is the public reverse proxy, and GitHub Actions updates the application over SSH.
 
-Files are limited to 20 MB by both nginx and the backend.
+## Screenshots
 
-## Local development
+Replace the placeholders below with screenshots pasted directly into this section. In GitHub's editor, you can drag an image into the README and GitHub will create the Markdown for you.
 
-1. Copy `.env.example` to `.env` and set a long random `JWT_SECRET`.
-2. Export the variables before running Node locally: `set -a; source .env; set +a`.
-3. Run migrations: `cd backend && npm install && npm run migrate`.
-4. Start the API: `npm run dev`.
-5. In another terminal, run `cd frontend && npm install && npm run dev`.
-6. Open the Vite URL shown in the terminal.
-7. Test if everything works
+### GitHub Actions deployment
 
-The Vite development server proxies `/api` to `http://localhost:8000`.
+<!-- Paste the image Markdown here, for example: -->
+<!-- ![Successful GitHub Actions deployment](github-actions-deployment.png) -->
 
-## Docker deployment
+_Paste the GitHub Actions screenshot here._
 
-Create a root `.env` with `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, and `JWT_SECRET`, then run:
+### Docker Compose services
 
-```sh
-docker compose up --build
+<!-- Paste the image Markdown here, for example: -->
+<!-- ![Running Docker Compose services](docker-compose-ps.png) -->
+
+_Paste the Docker Compose screenshot here._
+
+### HTTPS certificate
+
+<!-- Paste the image Markdown here, for example: -->
+<!-- ![HTTPS certificate](https-certificate.png) -->
+
+_Paste the HTTPS certificate screenshot here._
+
+### Firewall and Fail2ban
+
+<!-- Paste the image Markdown here, for example: -->
+<!-- ![UFW and Fail2ban status](ufw-fail2ban-status.png) -->
+
+_Paste the UFW and Fail2ban screenshot here._
+
+## Video explanation
+
+The recorded deployment explanation is available here:
+
+[![Watch the deployment explanation](https://img.youtube.com/vi/gKYbQm7ih0M/hqdefault.jpg)](https://youtu.be/gKYbQm7ih0M)
+
+GitHub does not play YouTube videos directly inside a README, but this thumbnail is clickable and opens the video on YouTube.
+
+## Deployment architecture
+
+The request path is:
+
+```text
+client -> DuckDNS -> server firewall -> nginx -> backend container -> PostgreSQL
 ```
 
-The database healthcheck completes before the backend starts. The backend applies all pending migrations before starting the API. Nginx serves the SPA and proxies `/api/` to the backend.
+Docker Compose runs three services:
 
-## Tests
+- PostgreSQL stores application data in the persistent `pgdata` volume.
+- The backend container runs pending migrations and then starts the API.
+- nginx publishes ports `80` and `443`, serves the application, and proxies `/api/` to the backend.
 
-Backend tests cover nickname validation, bcrypt hashing and verification, and signed session claims:
+Only nginx is exposed to the Internet. PostgreSQL and the backend are reachable through the internal Compose network, not through public host ports.
+
+## DuckDNS
+
+[DuckDNS](https://www.duckdns.org/) provides a free DNS record such as `test-devops.duckdns.org` that points to the server's public IP address. The hostname is used consistently by the nginx `server_name` directive, the TLS certificate issued by Let's Encrypt, the client URL, and the ACME HTTP-01 challenge.
+
+Create the DuckDNS subdomain, set its public IPv4 address, and update it whenever the server IP changes. A dynamic DNS updater is useful when the ISP changes the address.
+
+## Initial server setup
+
+The examples below assume a fresh Ubuntu server and a deployment directory of `/srv/devops_training`.
+
+Install Git, Docker, and the Compose plugin using the official Docker instructions. Then create a dedicated non-root deployment user:
 
 ```sh
-cd backend
-npm test
+sudo adduser deploy
+sudo usermod -aG docker deploy
+sudo mkdir -p /srv/devops_training
+sudo chown -R deploy:deploy /srv/devops_training
 ```
+
+Log in as `deploy` for application work. Group membership may require logging out and in again before the `docker` command works without `sudo`.
+
+Clone the repository and create the root `.env` file. It is intentionally not committed to Git:
+
+```sh
+git clone <repository-url> /srv/devops_training
+cd /srv/devops_training
+```
+
+```dotenv
+POSTGRES_USER=app
+POSTGRES_PASSWORD=<long-random-password>
+POSTGRES_DB=app
+JWT_SECRET=<long-random-secret>
+```
+
+Start the stack after nginx certificate paths have been prepared:
+
+```sh
+docker compose up -d --build
+docker compose ps
+docker compose logs -f
+```
+
+The backend waits for PostgreSQL to become healthy, runs migrations, and then starts the API. `pgdata` and `uploads` survive container recreation because they are named Docker volumes.
+
+## SSH: key authentication and no root login
+
+The server should use SSH keys instead of passwords, and SSH should reject direct root login. Generate a dedicated deployment key on the administrative machine:
+
+```sh
+ssh-keygen -t ed25519 -f ~/.ssh/github_actions_deploy -C github-actions-deploy
+ssh-copy-id -i ~/.ssh/github_actions_deploy.pub deploy@<server-ip>
+```
+
+The private key stays outside the repository. GitHub Actions receives it as an encrypted repository secret. The public key is added to `/home/deploy/.ssh/authorized_keys` on the server.
+
+In `/etc/ssh/sshd_config`, use settings equivalent to:
+
+```text
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+AllowUsers deploy
+```
+
+Validate the configuration before restarting SSH, and keep the current session open while testing a second connection:
+
+```sh
+sudo sshd -t
+sudo systemctl restart ssh
+ssh -i ~/.ssh/github_actions_deploy deploy@<server-ip>
+```
+
+“No password” refers to SSH authentication, not to the GitHub Actions connection being unauthenticated: Actions proves its identity with the encrypted private key and the server verifies the matching public key. The `deploy` user can run Docker through the Docker group, while root access is reserved for separately controlled administrative access through `sudo`.
+
+## GitHub Actions deployment
+
+The workflow in `.github/workflows/deploy.yml` runs on pushes to `main`. It uses `appleboy/ssh-action` to connect to the server and executes:
+
+```sh
+cd /srv/devops_training
+git pull
+docker compose up -d --build
+```
+
+Configure these repository secrets:
+
+| Secret | Value |
+| --- | --- |
+| `SSH_HOST` | Server IP address or DNS hostname |
+| `SSH_USER` | `deploy` |
+| `SSH_PRIVATE_KEY` | Complete contents of `github_actions_deploy` |
+
+The server must already contain the repository, have access to pull it, and have a valid `.env` file. GitHub Actions does not copy database credentials to the server; those remain in the server-side `.env` file.
+
+After the first manual deployment succeeds, a normal release is:
+
+```sh
+git add .
+git commit -m "Deploy change"
+git push origin main
+```
+
+Inspect a deployment on the server with:
+
+```sh
+docker compose ps
+docker compose logs --tail=100 backend
+docker compose logs --tail=100
+```
+
+## Docker and Docker Compose
+
+The root `docker-compose.yml` defines the service relationships and persistent data:
+
+- `db` uses PostgreSQL 16 and has a healthcheck with `pg_isready`.
+- `backend` depends on a healthy database and receives its connection string from environment variables.
+- nginx publishes `80:80` and `443:443` and mounts the Let's Encrypt certificates read-only.
+
+Useful operational commands:
+
+```sh
+docker compose up -d --build
+docker compose down
+docker compose restart backend
+docker compose logs -f
+docker volume ls
+```
+
+Do not use `docker compose down -v` on a production server unless deleting the database and uploaded files is intentional.
+
+## nginx reverse proxy
+
+nginx is the only public application endpoint. Its configuration serves the ACME challenge path from `/var/www/certbot`, redirects normal HTTP requests from port 80 to HTTPS, terminates TLS on port 443, proxies `/api/` to `http://backend:8000`, and enforces a 20 MB request limit.
+
+The `Host`, client IP, forwarded IP chain, and original protocol are passed to the backend with proxy headers. The backend should therefore trust these headers only when traffic comes through the known nginx proxy.
+
+## TLS with Certbot and the ACME HTTP-01 challenge
+
+TLS is the accurate term for the modern protocol; “SSL certificate” is common legacy terminology. Certbot obtains and renews a certificate from Let's Encrypt. Let's Encrypt is a certificate authority, and it uses the ACME protocol to automate certificate issuance.
+
+The challenge configured here is the **ACME HTTP-01 challenge**. Certbot places a token under `/.well-known/acme-challenge/<token>`. Let's Encrypt requests that URL over HTTP, and nginx serves the token from `/var/www/certbot`, proving control of the hostname. Port 80 must be reachable during issuance and renewal; all other HTTP traffic is redirected to HTTPS.
+
+The nginx container mounts these paths read-only:
+
+```text
+/etc/letsencrypt:/etc/letsencrypt:ro
+/var/www/certbot:/var/www/certbot:ro
+```
+
+On the server, Certbot needs write access to the same challenge directory and certificate directory. A typical first issuance uses webroot mode while nginx is running:
+
+```sh
+sudo certbot certonly --webroot \
+	-w /var/www/certbot \
+	-d test-devops.duckdns.org
+docker compose restart
+```
+
+Test renewal without changing the live certificate:
+
+```sh
+sudo certbot renew --dry-run
+```
+
+After a real renewal, reload or restart nginx so it reads the new certificate. Automate this with a systemd timer or cron job. Certificate files and private keys must never be committed to Git.
+
+## UFW firewall
+
+UFW should allow only the services required for administration and public HTTPS:
+
+```sh
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow OpenSSH
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw enable
+sudo ufw status verbose
+```
+
+Do not expose PostgreSQL (`5432`) or the backend port (`8000`) in UFW or Compose. Confirm that a second SSH session works before enabling a restrictive firewall policy.
+
+## Fail2ban
+
+Fail2ban watches authentication logs and temporarily bans IP addresses that repeatedly fail. Enable the service and configure the SSH jail:
+
+```sh
+sudo apt install fail2ban
+sudo systemctl enable --now fail2ban
+sudo fail2ban-client status
+sudo fail2ban-client status sshd
+```
+
+The SSH jail should protect the actual SSH port and use the system's authentication log. Keep the ban settings reasonable so a real administrator is not locked out accidentally. UFW blocks unsolicited traffic; Fail2ban adds temporary bans based on repeated suspicious behavior. They solve different parts of the server-hardening problem.
+
+## Verification checklist
+
+- DuckDNS resolves the hostname to the current public IP.
+- SSH works for `deploy` with the private key, while root and password login are disabled.
+- UFW allows ports 22, 80, and 443 only as required.
+- `docker compose ps` shows healthy, running services.
+- `https://test-devops.duckdns.org` presents a valid certificate.
+- `sudo certbot renew --dry-run` succeeds.
+- GitHub Actions can deploy a push to `main`.
+- PostgreSQL and the backend port are not publicly reachable.
